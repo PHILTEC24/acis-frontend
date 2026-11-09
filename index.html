@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACIS - Anti-Corruption Information System</title>
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- jsPDF for exporting reports -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --accent: #dc2626;
+      --accent-hover: #b91c1c;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); line-height: 1.6; }
+
+    /* Header & Navigation */
+    header { background: var(--primary); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid var(--accent); flex-wrap: wrap; }
+    .logo { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px; }
+    .logo span { color: var(--accent); }
+    nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    nav button { background: transparent; border: none; color: #cbd5e1; padding: 0.5rem 1rem; cursor: pointer; font-size: 0.95rem; font-weight: 600; border-radius: 4px; transition: 0.2s; }
+    nav button:hover, nav button.active { color: white; background: rgba(255,255,255,0.1); }
+    .auth-btn { background: var(--accent) !important; color: white !important; }
+
+    /* Layout Containers */
+    .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Cards & Forms */
+    .card { background: var(--card); border-radius: 8px; border: 1px solid var(--border); padding: 2rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 2rem; }
+    h2 { margin-bottom: 1rem; color: var(--primary); font-size: 1.4rem; font-weight: 700; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
+    .form-group { margin-bottom: 1.2rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem; }
+    input, textarea, select { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.95rem; outline: none; }
+    input:focus, textarea:focus, select:focus { border-color: var(--primary); }
+    
+    #map { height: 320px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 1rem; }
+    
+    .btn { background: var(--primary); color: white; border: none; padding: 0.75rem 1.5rem; font-weight: 600; border-radius: 6px; cursor: pointer; width: 100%; transition: 0.2s; }
+    .btn:hover { background: #1e293b; }
+    .btn-accent { background: var(--accent); }
+    .btn-accent:hover { background: var(--accent-hover); }
+
+    /* Badges & Tables */
+    .badge { padding: 0.25rem 0.6rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; display: inline-block; }
+    .badge-Pending { background: #fef3c7; color: #d97706; }
+    .badge-Review { background: #dbeafe; color: #2563eb; }
+    .badge-Resolved { background: #dcfce7; color: #16a34a; }
+    .badge-Rejected { background: #fee2e2; color: #dc2626; }
+
+    .table-container { overflow-x: auto; margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+    th, td { padding: 0.9rem; border-bottom: 1px solid var(--border); }
+    th { background: #f1f5f9; font-weight: 700; color: var(--primary); }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .stat-card { background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid var(--accent); }
+    .stat-card h3 { font-size: 0.85rem; color: #64748b; text-transform: uppercase; }
+    .stat-card p { font-size: 1.8rem; font-weight: 700; color: var(--primary); margin-top: 0.5rem; }
+
+    /* News Feed */
+    .news-card { border-left: 4px solid var(--accent); padding: 1rem 1.2rem; background: white; margin-bottom: 1rem; border-radius: 0 8px 8px 0; border-top: 1px solid var(--border); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .news-card h3 { color: var(--primary); font-size: 1.1rem; }
+    .news-card .date { font-size: 0.8rem; color: #64748b; margin-bottom: 0.5rem; }
+
+    @media (max-width: 768px) {
+      header { flex-direction: column; gap: 1rem; text-align: center; }
+      nav { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ACIS <span>Anti-Corruption Portal</span></div>
+  <nav id="navBar">
+    <button onclick="switchView('home')" class="active">Home</button>
+    <button onclick="switchView('news')">Public News Feed</button>
+    <button onclick="switchView('auth')" id="navAuthBtn" class="auth-btn">Citizen Login / Register</button>
+  </nav>
+</header>
+
+<div class="container">
+
+  <!-- HOME / LANDING VIEW -->
+  <div id="view-home" class="view active">
+    <div class="card" style="text-align: center; padding: 3rem 2rem;">
+      <h1 style="font-size: 2.2rem; color: var(--primary); margin-bottom: 1rem;">Combat Corruption with Documented Accountability</h1>
+      <p style="color: #64748b; max-width: 700px; margin: 0 auto 2rem auto; font-size: 1.1rem;">
+        The Anti-Corruption Information System (ACIS) provides a secure, structured channel for reporting corruption, attaching geo-pinned evidence, and tracking investigative outcomes[cite: 2].
+      </p>
+      <button onclick="switchView('auth')" class="btn btn-accent" style="width: auto; padding: 1rem 2.5rem; font-size: 1.1rem;">File a Secure Report Now</button>
+    </div>
+  </div>
+
+  <!-- AUTHENTICATION VIEW -->
+  <div id="view-auth" class="view">
+    <div style="max-width: 500px; margin: 0 auto;" class="card">
+      <h2>Portal Access</h2>
+      <div style="display: flex; gap: 10px; margin-bottom: 1.5rem;">
+        <button onclick="setAuthMode('login')" id="btnTabLogin" class="btn">Login</button>
+        <button onclick="setAuthMode('register')" id="btnTabRegister" class="btn" style="background: #e2e8f0; color: #334155;">Register</button>
+      </div>
+      <form id="authForm">
+        <div class="form-group" id="groupFullName" style="display:none;">
+          <label>Full Name</label>
+          <input type="text" id="regName" placeholder="Enter your full name">
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="authEmail" placeholder="name@example.com" required>
+        </div>
+        <div class="form-group" id="groupPhone" style="display:none;">
+          <label>Phone Number</label>
+          <input type="text" id="regPhone" placeholder="+256XXXXXXXXX">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="authPassword" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-accent" id="authSubmitBtn">Secure Login</button>
+      </form>
+      <div id="authError" style="color: var(--accent); margin-top: 1rem; font-size: 0.9rem; text-align: center;"></div>
+    </div>
+  </div>
+
+  <!-- CITIZEN DASHBOARD -->
+  <div id="view-citizen" class="view">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <h2 id="citizenWelcome" style="border:none; margin:0;">Citizen Dashboard</h2>
+      <button onclick="logout()" class="btn" style="width: auto; background: var(--accent);">Sign Out</button>
+    </div>
+
+    <div class="card">
+      <h2>Submit a Corruption Report</h2>
+      <form id="reportForm">
+        <div class="form-group">
+          <label>Incident Summary Title</label>
+          <input type="text" id="repTitle" placeholder="e.g., Extortion at Land Registry Office" required>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="repCategory" required></select>
+        </div>
+        <div class="form-group">
+          <label>Detailed Description</label>
+          <textarea id="repDesc" rows="4" placeholder="Provide dates, personnel involved, and context..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label>Attach Evidence (Photos / Documents)</label>
+          <input type="file" id="repFile">
+        </div>
+        <div class="form-group">
+          <label>Pin Location on Map</label>
+          <div id="map"></div>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="repAnonymous" style="width: auto;">
+          <label for="repAnonymous" style="margin:0; cursor: pointer;">Submit anonymously (hide identity from public/admin records)</label>
+        </div>
+        <button type="submit" class="btn btn-accent">Submit Official Report</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>My Filed Reports & Tracking Status</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Tracking Code</th>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Date Filed</th>
+            </tr>
+          </thead>
+          <tbody id="citizenReportsTable"><tr><td colspan="5">Loading your reports...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PUBLIC NEWS VIEW -->
+  <div id="view-news" class="view">
+    <div class="card">
+      <h2>Investigative News & Case Outcomes</h2>
+      <p style="color: #64748b; margin-bottom: 1.5rem;">Transparent updates on reported entities and official investigative resolutions[cite: 2].</p>
+      <div id="newsContainer">Loading public news feed...</div>
+    </div>
+  </div>
+
+  <!-- ADMIN DASHBOARD -->
+  <div id="view-admin" class="view">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <h2>Government Administrator Portal</h2>
+      <div style="display: flex; gap: 10px;">
+        <button onclick="exportAdminPDF()" class="btn" style="width: auto; background: #2563eb;">Export PDF Report</button>
+        <button onclick="logout()" class="btn" style="width: auto; background: var(--accent);">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="adminStats">
+      <div class="stat-card"><h3>Total Reports</h3><p id="statTotal">0</p></div>
+      <div class="stat-card"><h3>Pending Review</h3><p id="statPending">0</p></div>
+      <div class="stat-card"><h3>Resolved Cases</h3><p id="statResolved">0</p></div>
+    </div>
+
+    <div class="card">
+      <h2>All System Reports</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Evidence</th>
+              <th>Action / Manage</th>
+            </tr>
+          </thead>
+          <tbody id="adminReportsTable"><tr><td colspan="6">Loading cases...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  let token = localStorage.getItem('acis_token') || '';
+  let userRole = localStorage.getItem('acis_role') || '';
+  let map, marker, selectedLat = 0.3476, selectedLng = 32.5825;
+
+  // Initialize navigation & views on load
+  window.addEventListener('DOMContentLoaded', () => {
+    checkAuthState();
+    loadCategories();
+  });
+
+  function switchView(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(`view-${viewId}`).classList.add('active');
+    
+    if (viewId === 'news') loadNewsFeed();
+    if (viewId === 'citizen' && !map) initMap();
+    if (viewId === 'admin') loadAdminDashboard();
+  }
+
+  function checkAuthState() {
+    const navBar = document.getElementById('navBar');
+    if (token) {
+      if (userRole === 'admin') {
+        navBar.innerHTML = `
+          <button onclick="switchView('admin')" class="active">Admin Dashboard</button>
+          <button onclick="switchView('news')">News</button>
+          <button onclick="logout()" class="auth-btn">Logout</button>
+        `;
+        switchView('admin');
+      } else {
+        navBar.innerHTML = `
+          <button onclick="switchView('citizen')" class="active">Citizen Dashboard</button>
+          <button onclick="switchView('news')">News Feed</button>
+          <button onclick="logout()" class="auth-btn">Logout</button>
+        `;
+        switchView('citizen');
+      }
+    } else {
+      navBar.innerHTML = `
+        <button onclick="switchView('home')">Home</button>
+        <button onclick="switchView('news')">News Feed</button>
+        <button onclick="switchView('auth')" class="auth-btn">Login / Register</button>
+      `;
+    }
+  }
+
+  // Auth Mode Toggle (Login vs Register)
+  let authMode = 'login';
+  function setAuthMode(mode) {
+    authMode = mode;
+    const isReg = mode === 'register';
+    document.getElementById('btnTabLogin').style.background = isReg ? '#e2e8f0' : 'var(--primary)';
+    document.getElementById('btnTabLogin').style.color = isReg ? '#334155' : 'white';
+    document.getElementById('btnTabRegister').style.background = isReg ? 'var(--primary)' : '#e2e8f0';
+    document.getElementById('btnTabRegister').style.color = isReg ? 'white' : '#334155';
+    
+    document.getElementById('groupFullName').style.display = isReg ? 'block' : 'none';
+    document.getElementById('groupPhone').style.display = isReg ? 'block' : 'none';
+    document.getElementById('authSubmitBtn').innerText = isReg ? 'Create Account' : 'Secure Login';
+  }
+
+  // Auth Form Handler
+  document.getElementById('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const errBox = document.getElementById('authError');
+    errBox.innerText = '';
+
+    if (authMode === 'register') {
+      const full_name = document.getElementById('regName').value;
+      const phone = document.getElementById('regPhone').value;
+      const res = await fetch('https://acis-backend-q41n.onrender.com/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full_name, email, phone, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Registration successful! Please login.');
+        setAuthMode('login');
+      } else {
+        errBox.innerText = data.error;
+      }
+    } else {
+      const res = await fetch('https://acis-backend-q41n.onrender.com/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('acis_token', data.token);
+        localStorage.setItem('acis_role', data.role);
+        token = data.token;
+        userRole = data.role;
+        checkAuthState();
+      } else {
+        errBox.innerText = data.error;
+      }
+    }
+  });
+
+  function logout() {
+    localStorage.clear();
+    token = '';
+    userRole = '';
+    checkAuthState();
+    switchView('home');
+  }
+
+  // Initialize Leaflet Map
+  function initMap() {
+    setTimeout(() => {
+      if (map) map.remove();
+      map = L.map('map').setView([0.3476, 32.5825], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      marker = L.marker([0.3476, 32.5825], { draggable: true }).addTo(map);
+
+      map.on('click', (e) => {
+        selectedLat = e.latlng.lat;
+        selectedLng = e.latlng.lng;
+        marker.setLatLng([selectedLat, selectedLng]);
+      });
+      marker.on('dragend', (e) => {
+        selectedLat = e.target.getLatLng().lat;
+        selectedLng = e.target.getLatLng().lng;
+      });
+    }, 200);
+  }
+
+  async function loadCategories() {
+    const res = await fetch('https://acis-backend-q41n.onrender.com/api/categories');
+    const cats = await res.json();
+    const select = document.getElementById('repCategory');
+    if (select) {
+      select.innerHTML = cats.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    }
+  }
+
+  // Submit Report
+  document.getElementById('reportForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData();
+    formData.append('title', document.getElementById('repTitle').value);
+    formData.append('category', document.getElementById('repCategory').value);
+    formData.append('description', document.getElementById('repDesc').value);
+    formData.append('latitude', selectedLat);
+    formData.append('longitude', selectedLng);
+    formData.append('is_anonymous', document.getElementById('repAnonymous').checked ? 1 : 0);
+    
+    const file = document.getElementById('repFile').files[0];
+    if (file) formData.append('evidence', file);
+
+    const res = await fetch('https://acis-backend-q41n.onrender.com/api/reports', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`Report filed successfully! Tracking Code: ${data.trackingCode}`);
+      document.getElementById('reportForm').reset();
+      loadCitizenReports();
+    } else {
+      alert(data.error);
+    }
+  });
+
+  async function loadCitizenReports() {
+    const res = await fetch('https://acis-backend-q41n.onrender.com/api/my-reports', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const reports = await res.json();
+    const tbody = document.getElementById('citizenReportsTable');
+    tbody.innerHTML = reports.length ? reports.map(r => `
+      <tr>
+        <td><code>${r.tracking_code}</code></td>
+        <td>${r.title}</td>
+        <td>${r.category}</td>
+        <td><span class="badge badge-${r.status}">${r.status}</span></td>
+        <td>${new Date(r.created_at).toLocaleDateString()}</td>
+      </tr>
+    `).join('') : '<tr><td colspan="5">No reports filed yet.</td></tr>';
+  }
+
+  // Load News
+  async function loadNewsFeed() {
+    const res = await fetch('https://acis-backend-q41n.onrender.com/api/news');
+    const news = await res.json();
+    const container = document.getElementById('newsContainer');
+    container.innerHTML = news.length ? news.map(n => `
+      <div class="news-card">
+        <h3>${n.title}</h3>
+        <div class="date">Published: ${new Date(n.published_at).toLocaleDateString()} | Outcome: <strong>${n.outcome}</strong></div>
+        <p>${n.content}</p>
+      </div>
+    `).join('') : '<p>No investigative updates published at this time.</p>';
+  }
+
+  // Admin Dashboard Loading
+  async function loadAdminDashboard() {
+    const res = await fetch('https://acis-backend-q41n.onrender.com/api/admin/reports', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return logout();
+    const reports = await res.json();
+    
+    document.getElementById('statTotal').innerText = reports.length;
+    document.getElementById('statPending').innerText = reports.filter(r => r.status === 'Pending').length;
+    document.getElementById('statResolved').innerText = reports.filter(r => r.status === 'Resolved').length;
+
+    const tbody = document.getElementById('adminReportsTable');
+    tbody.innerHTML = reports.map(r => `
+      <tr>
+        <td><code>${r.tracking_code}</code></td>
+        <td>${r.title}</td>
+        <td>${r.category}</td>
+        <td><span class="badge badge-${r.status}">${r.status}</span></td>
+        <td>${r.file_url ? `<a href="http://localhost:3000${r.file_url}" target="_blank">View Evidence</a>` : 'None'}</td>
+        <td><button onclick="manageReport(${r.id})" class="btn" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">Manage</button></td>
+      </tr>
+    `).join('');
+  }
+
+  async function manageReport(id) {
+    const status = prompt("Set Status (Pending, Review, Resolved, Rejected):");
+    if (!status) return;
+    const notes = prompt("Admin Investigation Remarks:");
+    const publish = confirm("Publish case update to public news feed?");
+    let news_content = '';
+    if (publish) news_content = prompt("Enter public news summary statement:");
+
+    const res = await fetch(`https://acis-backend-q41n.onrender.com/api/admin/reports/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ status, admin_notes: notes, publish_news: publish, news_content })
+    });
+    if (res.ok) loadAdminDashboard();
+  }
+
+  // Export PDF Report using jsPDF
+  function exportAdminPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("ACIS - Official System Summary Report", 14, 20);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text("This document contains confidential government administrative audit summaries.", 14, 35);
+    doc.save("ACIS_System_Report.pdf");
+  }
+</script>
+</body>
+</html>
